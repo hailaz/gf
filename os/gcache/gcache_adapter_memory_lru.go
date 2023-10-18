@@ -8,7 +8,6 @@ package gcache
 
 import (
 	"context"
-	"time"
 
 	"github.com/gogf/gf/v2/container/glist"
 	"github.com/gogf/gf/v2/container/gmap"
@@ -35,7 +34,6 @@ func newMemCacheLru(cache *AdapterMemory) *adapterMemoryLru {
 		rawList: glist.New(true),
 		closed:  gtype.NewBool(),
 	}
-	gtimer.AddSingleton(context.Background(), time.Second, lru.SyncAndClear)
 	return lru
 }
 
@@ -71,14 +69,6 @@ func (lru *adapterMemoryLru) Pop() interface{} {
 	return nil
 }
 
-// Print is used for test only.
-// func (lru *adapterMemoryLru) Print() {
-//    for _, v := range lru.list.FrontAll() {
-//        fmt.Printf("%v ", v)
-//    }
-//    fmt.Println()
-// }
-
 // SyncAndClear synchronizes the keys from `rawList` to `list` and `data`
 // using Least Recently Used algorithm.
 func (lru *adapterMemoryLru) SyncAndClear(ctx context.Context) {
@@ -87,9 +77,7 @@ func (lru *adapterMemoryLru) SyncAndClear(ctx context.Context) {
 		return
 	}
 	// Data synchronization.
-	var (
-		alreadyExistItem interface{}
-	)
+	var alreadyExistItem interface{}
 	for {
 		if rawListItem := lru.rawList.PopFront(); rawListItem != nil {
 			// Deleting the key from list.
@@ -104,9 +92,9 @@ func (lru *adapterMemoryLru) SyncAndClear(ctx context.Context) {
 		}
 	}
 	// Data cleaning up.
-	for i := lru.Size() - lru.cache.cap; i > 0; i-- {
-		if s := lru.Pop(); s != nil {
-			lru.cache.clearByKey(s, true)
+	for clearLength := lru.Size() - lru.cache.cap; clearLength > 0; clearLength-- {
+		if topKey := lru.Pop(); topKey != nil {
+			lru.cache.clearByKey(topKey, true)
 		}
 	}
 }

@@ -9,12 +9,20 @@ package etcd
 import (
 	"context"
 
-	"github.com/gogf/gf/v2/net/gsvc"
 	etcd3 "go.etcd.io/etcd/client/v3"
+
+	"github.com/gogf/gf/v2/container/gmap"
+	"github.com/gogf/gf/v2/net/gsvc"
+	"github.com/gogf/gf/v2/text/gstr"
 )
 
-func (r *Registry) Search(ctx context.Context, in gsvc.SearchInput) ([]*gsvc.Service, error) {
-	res, err := r.kv.Get(ctx, in.Key(), etcd3.WithPrefix())
+// Search searches and returns services with specified condition.
+func (r *Registry) Search(ctx context.Context, in gsvc.SearchInput) ([]gsvc.Service, error) {
+	if in.Prefix == "" && in.Name != "" {
+		in.Prefix = gsvc.NewServiceWithName(in.Name).GetPrefix()
+	}
+
+	res, err := r.kv.Get(ctx, in.Prefix, etcd3.WithPrefix())
 	if err != nil {
 		return nil, err
 	}
@@ -23,26 +31,32 @@ func (r *Registry) Search(ctx context.Context, in gsvc.SearchInput) ([]*gsvc.Ser
 		return nil, err
 	}
 	// Service filter.
-	filteredServices := make([]*gsvc.Service, 0)
-	for _, v := range services {
-		if in.Deployment != "" && in.Deployment != v.Deployment {
+	filteredServices := make([]gsvc.Service, 0)
+	for _, service := range services {
+		if in.Prefix != "" && !gstr.HasPrefix(service.GetKey(), in.Prefix) {
 			continue
 		}
-		if in.Namespace != "" && in.Namespace != v.Namespace {
+		if in.Name != "" && service.GetName() != in.Name {
 			continue
 		}
-		if in.Name != "" && in.Name != v.Name {
+		if in.Version != "" && service.GetVersion() != in.Version {
 			continue
 		}
-		if in.Version != "" && in.Version != v.Version {
-			continue
+		if len(in.Metadata) != 0 {
+			m1 := gmap.NewStrAnyMapFrom(in.Metadata)
+			m2 := gmap.NewStrAnyMapFrom(service.GetMetadata())
+			if !m1.IsSubOf(m2) {
+				continue
+			}
 		}
-		service := v
-		filteredServices = append(filteredServices, service)
+		resultItem := service
+		filteredServices = append(filteredServices, resultItem)
 	}
 	return filteredServices, nil
 }
 
+// Watch watches specified condition changes.
+// The `key` is the prefix of service key.
 func (r *Registry) Watch(ctx context.Context, key string) (gsvc.Watcher, error) {
 	return newWatcher(key, r.client)
 }

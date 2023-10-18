@@ -10,16 +10,12 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/gogf/gf/v2/internal/consts"
+	"github.com/gogf/gf/v2/internal/instance"
 	"github.com/gogf/gf/v2/internal/intlog"
 	"github.com/gogf/gf/v2/net/ghttp"
 	"github.com/gogf/gf/v2/util/gconv"
 	"github.com/gogf/gf/v2/util/gutil"
-)
-
-const (
-	frameCoreComponentNameServer  = "gf.core.component.server" // Prefix for HTTP server instance.
-	configNodeNameServer          = "server"                   // General version configuration item name.
-	configNodeNameServerSecondary = "httpserver"               // New version configuration item name support from v2.
 )
 
 // Server returns an instance of http server with specified name.
@@ -34,7 +30,7 @@ func Server(name ...interface{}) *ghttp.Server {
 	if len(name) > 0 && name[0] != "" {
 		instanceName = gconv.String(name[0])
 	}
-	return localInstances.GetOrSetFuncLock(instanceKey, func() interface{} {
+	return instance.GetOrSetFuncLock(instanceKey, func() interface{} {
 		server := ghttp.GetServer(instanceName)
 		if Config().Available(ctx) {
 			// Server initialization from configuration.
@@ -49,19 +45,19 @@ func Server(name ...interface{}) *ghttp.Server {
 			}
 			// Find possible server configuration item by possible names.
 			if len(configMap) > 0 {
-				if v, _ := gutil.MapPossibleItemByKey(configMap, configNodeNameServer); v != "" {
+				if v, _ := gutil.MapPossibleItemByKey(configMap, consts.ConfigNodeNameServer); v != "" {
 					configNodeName = v
 				}
 				if configNodeName == "" {
-					if v, _ := gutil.MapPossibleItemByKey(configMap, configNodeNameServerSecondary); v != "" {
+					if v, _ := gutil.MapPossibleItemByKey(configMap, consts.ConfigNodeNameServerSecondary); v != "" {
 						configNodeName = v
 					}
 				}
 			}
-			// Server configuration.
+			// Automatically retrieve configuration by instance name.
 			serverConfigMap = Config().MustGet(
 				ctx,
-				fmt.Sprintf(`%s.%s`, configNodeName, server.GetName()),
+				fmt.Sprintf(`%s.%s`, configNodeName, instanceName),
 			).Map()
 			if len(serverConfigMap) == 0 {
 				serverConfigMap = Config().MustGet(ctx, configNodeName).Map()
@@ -81,8 +77,11 @@ func Server(name ...interface{}) *ghttp.Server {
 			// Server logger configuration checks.
 			serverLoggerConfigMap = Config().MustGet(
 				ctx,
-				fmt.Sprintf(`%s.%s.%s`, configNodeName, server.GetName(), configNodeNameLogger),
+				fmt.Sprintf(`%s.%s.%s`, configNodeName, instanceName, consts.ConfigNodeNameLogger),
 			).Map()
+			if len(serverLoggerConfigMap) == 0 && len(serverConfigMap) > 0 {
+				serverLoggerConfigMap = gconv.Map(serverConfigMap[consts.ConfigNodeNameLogger])
+			}
 			if len(serverLoggerConfigMap) > 0 {
 				if err = server.Logger().SetConfigWithMap(serverLoggerConfigMap); err != nil {
 					panic(err)

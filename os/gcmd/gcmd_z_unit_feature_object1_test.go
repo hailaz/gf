@@ -26,12 +26,14 @@ type TestCmdObject struct {
 type TestCmdObjectEnvInput struct {
 	g.Meta `name:"env" usage:"root env" brief:"root env command" dc:"root env command description" ad:"root env command ad"`
 }
+
 type TestCmdObjectEnvOutput struct{}
 
 type TestCmdObjectTestInput struct {
 	g.Meta `name:"test" usage:"root test" brief:"root test command" dc:"root test command description" ad:"root test command ad"`
 	Name   string `v:"required" short:"n" orphan:"false" brief:"name for test command"`
 }
+
 type TestCmdObjectTestOutput struct {
 	Content string
 }
@@ -60,6 +62,21 @@ func Test_Command_NewFromObject_Help(t *testing.T) {
 		value, err := cmd.RunWithValueError(ctx)
 		t.AssertNil(err)
 		t.Assert(value, nil)
+	})
+}
+
+func Test_Command_NewFromObject_Run(t *testing.T) {
+	gtest.C(t, func(t *gtest.T) {
+		var (
+			ctx      = gctx.New()
+			cmd, err = gcmd.NewFromObject(&TestCmdObject{})
+		)
+		t.AssertNil(err)
+		t.Assert(cmd.Name, "root")
+
+		os.Args = []string{"root", "test", "-n=john"}
+
+		cmd.Run(ctx)
 	})
 }
 
@@ -104,12 +121,14 @@ type TestObjectForRootTag struct {
 type TestObjectForRootTagEnvInput struct {
 	g.Meta `name:"env" usage:"root env" brief:"root env command" dc:"root env command description" ad:"root env command ad"`
 }
+
 type TestObjectForRootTagEnvOutput struct{}
 
 type TestObjectForRootTagTestInput struct {
 	g.Meta `name:"root"`
 	Name   string `v:"required" short:"n" orphan:"false" brief:"name for test command"`
 }
+
 type TestObjectForRootTagTestOutput struct {
 	Content string
 }
@@ -160,6 +179,7 @@ type TestObjectForNeedArgs struct {
 type TestObjectForNeedArgsEnvInput struct {
 	g.Meta `name:"env" usage:"root env" brief:"root env command" dc:"root env command description" ad:"root env command ad"`
 }
+
 type TestObjectForNeedArgsEnvOutput struct{}
 
 type TestObjectForNeedArgsTestInput struct {
@@ -168,6 +188,7 @@ type TestObjectForNeedArgsTestInput struct {
 	Arg2   string `arg:"true" brief:"arg2 for test command"`
 	Name   string `v:"required" short:"n" orphan:"false" brief:"name for test command"`
 }
+
 type TestObjectForNeedArgsTestOutput struct {
 	Args []string
 }
@@ -209,12 +230,14 @@ type TestObjectPointerTag struct {
 type TestObjectPointerTagEnvInput struct {
 	g.Meta `name:"env" usage:"root env" brief:"root env command" dc:"root env command description" ad:"root env command ad"`
 }
+
 type TestObjectPointerTagEnvOutput struct{}
 
 type TestObjectPointerTagTestInput struct {
 	g.Meta `name:"root"`
 	Name   string `v:"required" short:"n" orphan:"false" brief:"name for test command"`
 }
+
 type TestObjectPointerTagTestOutput struct {
 	Content string
 }
@@ -243,7 +266,7 @@ func Test_Command_Pointer(t *testing.T) {
 		t.AssertNil(err)
 		t.Assert(value, `{"Content":"john"}`)
 	})
-	return
+
 	gtest.C(t, func(t *gtest.T) {
 		var (
 			ctx = gctx.New()
@@ -255,5 +278,46 @@ func Test_Command_Pointer(t *testing.T) {
 		value, err := cmd.RunWithValueError(ctx)
 		t.AssertNil(err)
 		t.Assert(value, `{"Content":"john"}`)
+	})
+}
+
+type TestCommandOrphan struct {
+	g.Meta `name:"root" root:"root"`
+}
+
+type TestCommandOrphanIndexInput struct {
+	g.Meta  `name:"index"`
+	Orphan1 bool `short:"n1" orphan:"true"`
+	Orphan2 bool `short:"n2" orphan:"true"`
+	Orphan3 bool `short:"n3" orphan:"true"`
+}
+
+type TestCommandOrphanIndexOutput struct {
+	Orphan1 bool
+	Orphan2 bool
+	Orphan3 bool
+}
+
+func (c *TestCommandOrphan) Index(ctx context.Context, in TestCommandOrphanIndexInput) (out *TestCommandOrphanIndexOutput, err error) {
+	out = &TestCommandOrphanIndexOutput{
+		Orphan1: in.Orphan1,
+		Orphan2: in.Orphan2,
+		Orphan3: in.Orphan3,
+	}
+	return
+}
+
+func Test_Command_Orphan_Parameter(t *testing.T) {
+	gtest.C(t, func(t *gtest.T) {
+		var ctx = gctx.New()
+		cmd, err := gcmd.NewFromObject(TestCommandOrphan{})
+		t.AssertNil(err)
+
+		os.Args = []string{"root", "index", "-n1", "-n2=0", "-n3=1"}
+		value, err := cmd.RunWithValueError(ctx)
+		t.AssertNil(err)
+		t.Assert(value.(*TestCommandOrphanIndexOutput).Orphan1, true)
+		t.Assert(value.(*TestCommandOrphanIndexOutput).Orphan2, false)
+		t.Assert(value.(*TestCommandOrphanIndexOutput).Orphan3, true)
 	})
 }

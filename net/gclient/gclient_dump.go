@@ -8,7 +8,7 @@ package gclient
 
 import (
 	"fmt"
-	"io/ioutil"
+	"io"
 	"net/http"
 	"net/http/httputil"
 
@@ -29,7 +29,7 @@ func getResponseBody(res *http.Response) string {
 	if res.Body == nil {
 		return ""
 	}
-	bodyContent, _ := ioutil.ReadAll(res.Body)
+	bodyContent, _ := io.ReadAll(res.Body)
 	res.Body = utils.NewReadCloser(bodyContent, true)
 	return string(bodyContent)
 }
@@ -37,10 +37,7 @@ func getResponseBody(res *http.Response) string {
 // RawRequest returns the raw content of the request.
 func (r *Response) RawRequest() string {
 	// Response can be nil.
-	if r == nil {
-		return ""
-	}
-	if r.request == nil {
+	if r == nil || r.request == nil {
 		return ""
 	}
 	// DumpRequestOut writes more request headers than DumpRequest, such as User-Agent.

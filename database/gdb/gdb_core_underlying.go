@@ -10,6 +10,12 @@ package gdb
 import (
 	"context"
 	"database/sql"
+	"reflect"
+
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/trace"
+
+	"github.com/gogf/gf/v2/util/gconv"
 
 	"github.com/gogf/gf/v2"
 	"github.com/gogf/gf/v2/container/gvar"
@@ -18,8 +24,6 @@ import (
 	"github.com/gogf/gf/v2/internal/intlog"
 	"github.com/gogf/gf/v2/os/gtime"
 	"github.com/gogf/gf/v2/util/guid"
-	"go.opentelemetry.io/otel"
-	"go.opentelemetry.io/otel/trace"
 )
 
 // Query commits one query SQL to underlying driver and returns the execution result.
@@ -35,7 +39,7 @@ func (c *Core) DoQuery(ctx context.Context, link Link, sql string, args ...inter
 	if link == nil {
 		if tx := TXFromCtx(ctx, c.db.GetGroup()); tx != nil {
 			// Firstly, check and retrieve transaction link from context.
-			link = &txLink{tx.tx}
+			link = &txLink{tx.GetSqlTX()}
 		} else if link, err = c.SlaveLink(); err != nil {
 			// Or else it creates one from master node.
 			return nil, err
@@ -43,19 +47,30 @@ func (c *Core) DoQuery(ctx context.Context, link Link, sql string, args ...inter
 	} else if !link.IsTransaction() {
 		// If current link is not transaction link, it checks and retrieves transaction from context.
 		if tx := TXFromCtx(ctx, c.db.GetGroup()); tx != nil {
-			link = &txLink{tx.tx}
+			link = &txLink{tx.GetSqlTX()}
 		}
 	}
 
-	if c.GetConfig().QueryTimeout > 0 {
-		ctx, _ = context.WithTimeout(ctx, c.GetConfig().QueryTimeout)
+	if c.db.GetConfig().QueryTimeout > 0 {
+		ctx, _ = context.WithTimeout(ctx, c.db.GetConfig().QueryTimeout)
 	}
 
 	// Sql filtering.
-	sql, args = formatSql(sql, args)
+	sql, args = c.FormatSqlBeforeExecuting(sql, args)
 	sql, args, err = c.db.DoFilter(ctx, link, sql, args)
 	if err != nil {
 		return nil, err
+	}
+	// SQL format and retrieve.
+	if v := ctx.Value(ctxKeyCatchSQL); v != nil {
+		var (
+			manager      = v.(*CatchSQLManager)
+			formattedSql = FormatSqlWithArgs(sql, args)
+		)
+		manager.SQLArray.Append(formattedSql)
+		if !manager.DoCommit && ctx.Value(ctxKeyInternalProducedSQL) == nil {
+			return nil, nil
+		}
 	}
 	// Link execution.
 	var out DoCommitOutput
@@ -83,7 +98,7 @@ func (c *Core) DoExec(ctx context.Context, link Link, sql string, args ...interf
 	if link == nil {
 		if tx := TXFromCtx(ctx, c.db.GetGroup()); tx != nil {
 			// Firstly, check and retrieve transaction link from context.
-			link = &txLink{tx.tx}
+			link = &txLink{tx.GetSqlTX()}
 		} else if link, err = c.MasterLink(); err != nil {
 			// Or else it creates one from master node.
 			return nil, err
@@ -91,21 +106,32 @@ func (c *Core) DoExec(ctx context.Context, link Link, sql string, args ...interf
 	} else if !link.IsTransaction() {
 		// If current link is not transaction link, it checks and retrieves transaction from context.
 		if tx := TXFromCtx(ctx, c.db.GetGroup()); tx != nil {
-			link = &txLink{tx.tx}
+			link = &txLink{tx.GetSqlTX()}
 		}
 	}
 
-	if c.GetConfig().ExecTimeout > 0 {
+	if c.db.GetConfig().ExecTimeout > 0 {
 		var cancelFunc context.CancelFunc
-		ctx, cancelFunc = context.WithTimeout(ctx, c.GetConfig().ExecTimeout)
+		ctx, cancelFunc = context.WithTimeout(ctx, c.db.GetConfig().ExecTimeout)
 		defer cancelFunc()
 	}
 
-	// Sql filtering.
-	sql, args = formatSql(sql, args)
+	// SQL filtering.
+	sql, args = c.FormatSqlBeforeExecuting(sql, args)
 	sql, args, err = c.db.DoFilter(ctx, link, sql, args)
 	if err != nil {
 		return nil, err
+	}
+	// SQL format and retrieve.
+	if v := ctx.Value(ctxKeyCatchSQL); v != nil {
+		var (
+			manager      = v.(*CatchSQLManager)
+			formattedSql = FormatSqlWithArgs(sql, args)
+		)
+		manager.SQLArray.Append(formattedSql)
+		if !manager.DoCommit && ctx.Value(ctxKeyInternalProducedSQL) == nil {
+			return new(SqlResult), nil
+		}
 	}
 	// Link execution.
 	var out DoCommitOutput
@@ -129,6 +155,9 @@ func (c *Core) DoFilter(ctx context.Context, link Link, sql string, args []inter
 
 // DoCommit commits current sql and arguments to underlying sql driver.
 func (c *Core) DoCommit(ctx context.Context, in DoCommitInput) (out DoCommitOutput, err error) {
+	// Inject internal data into ctx, especially for transaction creating.
+	ctx = c.InjectInternalCtxData(ctx)
+
 	var (
 		sqlTx                *sql.Tx
 		sqlStmt              *sql.Stmt
@@ -138,6 +167,7 @@ func (c *Core) DoCommit(ctx context.Context, in DoCommitInput) (out DoCommitOutp
 		stmtSqlRow           *sql.Row
 		rowsAffected         int64
 		cancelFuncForTimeout context.CancelFunc
+		formattedSql         = FormatSqlWithArgs(in.Sql, in.Args)
 		timestampMilli1      = gtime.TimestampMilli()
 	)
 
@@ -150,14 +180,14 @@ func (c *Core) DoCommit(ctx context.Context, in DoCommitInput) (out DoCommitOutp
 	switch in.Type {
 	case SqlTypeBegin:
 		if sqlTx, err = in.Db.Begin(); err == nil {
-			out.Tx = &TX{
+			out.Tx = &TXCore{
 				db:            c.db,
 				tx:            sqlTx,
 				ctx:           context.WithValue(ctx, transactionIdForLoggerCtx, transactionIdGenerator.Add(1)),
 				master:        in.Db,
 				transactionId: guid.S(),
 			}
-			ctx = out.Tx.ctx
+			ctx = out.Tx.GetCtx()
 		}
 		out.RawResult = sqlTx
 
@@ -184,7 +214,7 @@ func (c *Core) DoCommit(ctx context.Context, in DoCommitInput) (out DoCommitOutp
 		out.RawResult = sqlStmt
 
 	case SqlTypeStmtExecContext:
-		ctx, cancelFuncForTimeout = c.GetCtxTimeout(ctxTimeoutTypeExec, ctx)
+		ctx, cancelFuncForTimeout = c.GetCtxTimeout(ctx, ctxTimeoutTypeExec)
 		defer cancelFuncForTimeout()
 		if c.db.GetDryRun() {
 			sqlResult = new(SqlResult)
@@ -194,13 +224,13 @@ func (c *Core) DoCommit(ctx context.Context, in DoCommitInput) (out DoCommitOutp
 		out.RawResult = sqlResult
 
 	case SqlTypeStmtQueryContext:
-		ctx, cancelFuncForTimeout = c.GetCtxTimeout(ctxTimeoutTypeQuery, ctx)
+		ctx, cancelFuncForTimeout = c.GetCtxTimeout(ctx, ctxTimeoutTypeQuery)
 		defer cancelFuncForTimeout()
 		stmtSqlRows, err = in.Stmt.QueryContext(ctx, in.Args...)
 		out.RawResult = stmtSqlRows
 
 	case SqlTypeStmtQueryRowContext:
-		ctx, cancelFuncForTimeout = c.GetCtxTimeout(ctxTimeoutTypeQuery, ctx)
+		ctx, cancelFuncForTimeout = c.GetCtxTimeout(ctx, ctxTimeoutTypeQuery)
 		defer cancelFuncForTimeout()
 		stmtSqlRow = in.Stmt.QueryRowContext(ctx, in.Args...)
 		out.RawResult = stmtSqlRow
@@ -210,7 +240,7 @@ func (c *Core) DoCommit(ctx context.Context, in DoCommitInput) (out DoCommitOutp
 	}
 	// Result handling.
 	switch {
-	case sqlResult != nil:
+	case sqlResult != nil && !c.GetIgnoreResultFromCtx(ctx):
 		rowsAffected, err = sqlResult.RowsAffected()
 		out.Result = sqlResult
 
@@ -232,11 +262,12 @@ func (c *Core) DoCommit(ctx context.Context, in DoCommitInput) (out DoCommitOutp
 			Sql:           in.Sql,
 			Type:          in.Type,
 			Args:          in.Args,
-			Format:        FormatSqlWithArgs(in.Sql, in.Args),
+			Format:        formattedSql,
 			Error:         err,
 			Start:         timestampMilli1,
 			End:           timestampMilli2,
 			Group:         c.db.GetGroup(),
+			Schema:        c.db.GetSchema(),
 			RowsAffected:  rowsAffected,
 			IsTransaction: in.IsTransaction,
 		}
@@ -250,10 +281,9 @@ func (c *Core) DoCommit(ctx context.Context, in DoCommitInput) (out DoCommitOutp
 		c.writeSqlToLogger(ctx, sqlObj)
 	}
 	if err != nil && err != sql.ErrNoRows {
-		err = gerror.NewCodef(
+		err = gerror.WrapCode(
 			gcode.CodeDbOperationError,
-			"%s, %s\n",
-			err.Error(),
+			err,
 			FormatSqlWithArgs(in.Sql, in.Args),
 		)
 	}
@@ -291,7 +321,7 @@ func (c *Core) DoPrepare(ctx context.Context, link Link, sql string) (stmt *Stmt
 	if link == nil {
 		if tx := TXFromCtx(ctx, c.db.GetGroup()); tx != nil {
 			// Firstly, check and retrieve transaction link from context.
-			link = &txLink{tx.tx}
+			link = &txLink{tx.GetSqlTX()}
 		} else {
 			// Or else it creates one from master node.
 			var err error
@@ -302,13 +332,13 @@ func (c *Core) DoPrepare(ctx context.Context, link Link, sql string) (stmt *Stmt
 	} else if !link.IsTransaction() {
 		// If current link is not transaction link, it checks and retrieves transaction from context.
 		if tx := TXFromCtx(ctx, c.db.GetGroup()); tx != nil {
-			link = &txLink{tx.tx}
+			link = &txLink{tx.GetSqlTX()}
 		}
 	}
 
-	if c.GetConfig().PrepareTimeout > 0 {
+	if c.db.GetConfig().PrepareTimeout > 0 {
 		// DO NOT USE cancel function in prepare statement.
-		ctx, _ = context.WithTimeout(ctx, c.GetConfig().PrepareTimeout)
+		ctx, _ = context.WithTimeout(ctx, c.db.GetConfig().PrepareTimeout)
 	}
 
 	// Link execution.
@@ -336,21 +366,18 @@ func (c *Core) RowsToResult(ctx context.Context, rows *sql.Rows) (Result, error)
 		return nil, nil
 	}
 	// Column names and types.
-	columns, err := rows.ColumnTypes()
+	columnTypes, err := rows.ColumnTypes()
 	if err != nil {
 		return nil, err
 	}
 
-	var (
-		columnTypes = make([]string, len(columns))
-		columnNames = make([]string, len(columns))
-	)
-	for k, v := range columns {
-		columnTypes[k] = v.DatabaseTypeName()
-		columnNames[k] = v.Name()
+	if len(columnTypes) > 0 {
+		if internalData := c.GetInternalCtxDataFromCtx(ctx); internalData != nil {
+			internalData.FirstResultColumn = columnTypes[0].Name()
+		}
 	}
 	var (
-		values   = make([]interface{}, len(columnNames))
+		values   = make([]interface{}, len(columnTypes))
 		result   = make(Result, 0)
 		scanArgs = make([]interface{}, len(values))
 	)
@@ -364,9 +391,15 @@ func (c *Core) RowsToResult(ctx context.Context, rows *sql.Rows) (Result, error)
 		record := Record{}
 		for i, value := range values {
 			if value == nil {
-				record[columnNames[i]] = gvar.New(nil)
+				// DO NOT use `gvar.New(nil)` here as it creates an initialized object
+				// which will cause struct converting issue.
+				record[columnTypes[i].Name()] = nil
 			} else {
-				record[columnNames[i]] = gvar.New(c.convertFieldValueToLocalValue(value, columnTypes[i]))
+				var convertedValue interface{}
+				if convertedValue, err = c.columnValueToLocalValue(ctx, value, columnTypes[i]); err != nil {
+					return nil, err
+				}
+				record[columnTypes[i].Name()] = gvar.New(convertedValue)
 			}
 		}
 		result = append(result, record)
@@ -375,4 +408,24 @@ func (c *Core) RowsToResult(ctx context.Context, rows *sql.Rows) (Result, error)
 		}
 	}
 	return result, nil
+}
+
+func (c *Core) columnValueToLocalValue(ctx context.Context, value interface{}, columnType *sql.ColumnType) (interface{}, error) {
+	var scanType = columnType.ScanType()
+	if scanType != nil {
+		// Common basic builtin types.
+		switch scanType.Kind() {
+		case
+			reflect.Bool,
+			reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64,
+			reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64,
+			reflect.Float32, reflect.Float64:
+			return gconv.Convert(
+				gconv.String(value),
+				columnType.ScanType().String(),
+			), nil
+		}
+	}
+	// Other complex types, especially custom types.
+	return c.db.ConvertValueForLocal(ctx, columnType.DatabaseTypeName(), value)
 }

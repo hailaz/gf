@@ -10,14 +10,13 @@ import (
 	"context"
 	"sync"
 
+	"github.com/gogf/gf/v2/internal/intlog"
 	"github.com/gogf/gf/v2/util/grand"
 )
 
-const SelectorRandom = "BalancerRandom"
-
 type selectorRandom struct {
 	mu    sync.RWMutex
-	nodes []Node
+	nodes Nodes
 }
 
 func NewSelectorRandom() Selector {
@@ -26,7 +25,8 @@ func NewSelectorRandom() Selector {
 	}
 }
 
-func (s *selectorRandom) Update(nodes []Node) error {
+func (s *selectorRandom) Update(ctx context.Context, nodes Nodes) error {
+	intlog.Printf(ctx, `Update nodes: %s`, nodes.String())
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.nodes = nodes
@@ -39,5 +39,7 @@ func (s *selectorRandom) Pick(ctx context.Context) (node Node, done DoneFunc, er
 	if len(s.nodes) == 0 {
 		return nil, nil, nil
 	}
-	return s.nodes[grand.Intn(len(s.nodes))], nil, nil
+	node = s.nodes[grand.Intn(len(s.nodes))]
+	intlog.Printf(ctx, `Picked node: %s`, node.Address())
+	return node, nil, nil
 }

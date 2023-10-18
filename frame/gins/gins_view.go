@@ -10,14 +10,11 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/gogf/gf/v2/internal/consts"
+	"github.com/gogf/gf/v2/internal/instance"
 	"github.com/gogf/gf/v2/internal/intlog"
 	"github.com/gogf/gf/v2/os/gview"
 	"github.com/gogf/gf/v2/util/gutil"
-)
-
-const (
-	frameCoreComponentNameViewer = "gf.core.component.viewer"
-	configNodeNameViewer         = "viewer"
 )
 
 // View returns an instance of View with default settings.
@@ -29,7 +26,7 @@ func View(name ...string) *gview.View {
 		instanceName = name[0]
 	}
 	instanceKey := fmt.Sprintf("%s.%s", frameCoreComponentNameViewer, instanceName)
-	return localInstances.GetOrSetFuncLock(instanceKey, func() interface{} {
+	return instance.GetOrSetFuncLock(instanceKey, func() interface{} {
 		return getViewInstance(instanceName)
 	}).(*gview.View)
 }
@@ -47,13 +44,13 @@ func getViewInstance(name ...string) *gview.View {
 	if Config().Available(ctx) {
 		var (
 			configMap      map[string]interface{}
-			configNodeName = configNodeNameViewer
+			configNodeName = consts.ConfigNodeNameViewer
 		)
 		if configMap, err = Config().Data(ctx); err != nil {
 			intlog.Errorf(ctx, `retrieve config data map failed: %+v`, err)
 		}
 		if len(configMap) > 0 {
-			if v, _ := gutil.MapPossibleItemByKey(configMap, configNodeNameViewer); v != "" {
+			if v, _ := gutil.MapPossibleItemByKey(configMap, consts.ConfigNodeNameViewer); v != "" {
 				configNodeName = v
 			}
 		}

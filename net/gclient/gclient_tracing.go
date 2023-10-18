@@ -9,11 +9,10 @@ package gclient
 import (
 	"context"
 	"fmt"
-	"io/ioutil"
+	"io"
 	"net/http"
 	"net/http/httptrace"
 
-	"github.com/gogf/gf/v2/os/gctx"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
@@ -24,6 +23,7 @@ import (
 	"github.com/gogf/gf/v2/internal/httputil"
 	"github.com/gogf/gf/v2/internal/utils"
 	"github.com/gogf/gf/v2/net/gtrace"
+	"github.com/gogf/gf/v2/os/gctx"
 	"github.com/gogf/gf/v2/text/gstr"
 	"github.com/gogf/gf/v2/util/gconv"
 )
@@ -60,7 +60,7 @@ func internalMiddlewareTracing(c *Client, r *http.Request) (response *Response, 
 		tracingInstrumentName,
 		trace.WithInstrumentationVersion(gf.VERSION),
 	)
-	ctx, span := tr.Start(r.Context(), r.URL.String(), trace.WithSpanKind(trace.SpanKindClient))
+	ctx, span := tr.Start(ctx, r.URL.String(), trace.WithSpanKind(trace.SpanKindClient))
 	defer span.End()
 
 	span.SetAttributes(gtrace.CommonLabels()...)
@@ -89,7 +89,7 @@ func internalMiddlewareTracing(c *Client, r *http.Request) (response *Response, 
 		return
 	}
 
-	reqBodyContentBytes, _ := ioutil.ReadAll(response.Body)
+	reqBodyContentBytes, _ := io.ReadAll(response.Body)
 	response.Body = utils.NewReadCloser(reqBodyContentBytes, false)
 
 	span.AddEvent(tracingEventHttpResponse, trace.WithAttributes(

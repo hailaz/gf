@@ -84,6 +84,13 @@ func (p *Pool) Put(value interface{}) error {
 	return nil
 }
 
+// MustPut puts an item to pool, it panics if any error occurs.
+func (p *Pool) MustPut(value interface{}) {
+	if err := p.Put(value); err != nil {
+		panic(err)
+	}
+}
+
 // Clear clears pool, which means it will remove all items from pool.
 func (p *Pool) Clear() {
 	if p.ExpireFunc != nil {
@@ -97,7 +104,6 @@ func (p *Pool) Clear() {
 	} else {
 		p.list.RemoveAll()
 	}
-
 }
 
 // Get picks and returns an item from pool. If the pool is empty and NewFunc is defined,
@@ -109,7 +115,7 @@ func (p *Pool) Get() (interface{}, error) {
 			if f.expireAt == 0 || f.expireAt > gtime.TimestampMilli() {
 				return f.value, nil
 			} else if p.ExpireFunc != nil {
-				// TODO: move expire function calling asynchronously from `Get` operation.
+				// TODO: move expire function calling asynchronously out from `Get` operation.
 				p.ExpireFunc(f.value)
 			}
 		} else {
@@ -129,7 +135,7 @@ func (p *Pool) Size() int {
 
 // Close closes the pool. If `p` has ExpireFunc,
 // then it automatically closes all items using this function before it's closed.
-// Commonly you do not need call this function manually.
+// Commonly you do not need to call this function manually.
 func (p *Pool) Close() {
 	p.closed.Set(true)
 }

@@ -30,7 +30,7 @@ const (
 	DefaultPermOpen = os.FileMode(0666)
 
 	// DefaultPermCopy is the default perm for file/folder copy.
-	DefaultPermCopy = os.FileMode(0777)
+	DefaultPermCopy = os.FileMode(0755)
 )
 
 var (
@@ -41,16 +41,9 @@ var (
 	// selfPath is the current running binary path.
 	// As it is most commonly used, it is so defined as an internal package variable.
 	selfPath = ""
-
-	// Temporary directory of system.
-	tempDir = "/tmp"
 )
 
 func init() {
-	// Initialize internal package variable: tempDir.
-	if Separator != "/" || !Exists(tempDir) {
-		tempDir = os.TempDir()
-	}
 	// Initialize internal package variable: selfPath.
 	selfPath, _ = exec.LookPath(os.Args[0])
 	if selfPath != "" {
@@ -71,7 +64,7 @@ func Mkdir(path string) (err error) {
 	return nil
 }
 
-// Create creates file with given `path` recursively.
+// Create creates a file with given `path` recursively.
 // The parameter `path` is suggested to be absolute path.
 func Create(path string) (*os.File, error) {
 	dir := Dir(path)
@@ -257,9 +250,14 @@ func Glob(pattern string, onlyNames ...bool) ([]string, error) {
 
 // Remove deletes all file/directory with `path` parameter.
 // If parameter `path` is directory, it deletes it recursively.
+//
+// It does nothing if given `path` does not exist or is empty.
 func Remove(path string) (err error) {
-	err = os.RemoveAll(path)
-	if err != nil {
+	// It does nothing if `path` is empty.
+	if path == "" {
+		return nil
+	}
+	if err = os.RemoveAll(path); err != nil {
 		err = gerror.Wrapf(err, `os.RemoveAll failed for path "%s"`, path)
 	}
 	return
@@ -417,8 +415,10 @@ func IsEmpty(path string) bool {
 // The extension is the suffix beginning at the final dot
 // in the final element of path; it is empty if there is
 // no dot.
-//
 // Note: the result contains symbol '.'.
+// Eg:
+// main.go  => .go
+// api.json => .json
 func Ext(path string) string {
 	ext := filepath.Ext(path)
 	if p := strings.IndexByte(ext, '?'); p != -1 {
@@ -429,19 +429,21 @@ func Ext(path string) string {
 
 // ExtName is like function Ext, which returns the file name extension used by path,
 // but the result does not contain symbol '.'.
+// Eg:
+// main.go  => go
+// api.json => json
 func ExtName(path string) string {
 	return strings.TrimLeft(Ext(path), ".")
 }
 
 // Temp retrieves and returns the temporary directory of current system.
-// It returns "/tmp" is current in *nix system, or else it returns os.TempDir().
 //
 // The optional parameter `names` specifies the sub-folders/sub-files,
 // which will be joined with current system separator and returned with the path.
 func Temp(names ...string) string {
-	path := tempDir
+	path := os.TempDir()
 	for _, name := range names {
-		path += Separator + name
+		path = Join(path, name)
 	}
 	return path
 }

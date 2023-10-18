@@ -7,12 +7,12 @@
 .settings/
 .vscode/
 vendor/
-composer.lock
-gitpush.sh
 pkg/
 bin/
-cbuild
 **/.DS_Store
-.vscode/
 .test/
-main
+cmd/gf/main
+cmd/gf/gf
+go.work
+go.work.sum
+temp/

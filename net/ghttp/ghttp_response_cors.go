@@ -11,8 +11,6 @@ import (
 	"net/http"
 	"net/url"
 
-	"github.com/gogf/gf/v2/errors/gcode"
-	"github.com/gogf/gf/v2/errors/gerror"
 	"github.com/gogf/gf/v2/text/gstr"
 	"github.com/gogf/gf/v2/util/gconv"
 )
@@ -31,7 +29,7 @@ type CORSOptions struct {
 
 var (
 	// defaultAllowHeaders is the default allowed headers for CORS.
-	// It's defined another map for better header key searching performance.
+	// It defined another map for better header key searching performance.
 	defaultAllowHeaders    = "Origin,Content-Type,Accept,User-Agent,Cookie,Authorization,X-Auth-Token,X-Requested-With"
 	defaultAllowHeadersMap = make(map[string]struct{})
 )
@@ -119,7 +117,6 @@ func (r *Response) CORSAllowedOrigin(options CORSOptions) bool {
 	}
 	parsed, err := url.Parse(origin)
 	if err != nil {
-		err = gerror.WrapCodef(gcode.CodeInvalidParameter, err, `url.Parse failed for URL "%s"`, origin)
 		return false
 	}
 	for _, v := range options.AllowDomain {

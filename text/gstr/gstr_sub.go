@@ -11,6 +11,7 @@ import "strings"
 // Str returns part of `haystack` string starting from and including
 // the first occurrence of `needle` to the end of `haystack`.
 // See http://php.net/manual/en/function.strstr.php.
+// Eg: Str("12345", "3") => "345"
 func Str(haystack string, needle string) string {
 	if needle == "" {
 		return ""
@@ -24,6 +25,7 @@ func Str(haystack string, needle string) string {
 
 // StrEx returns part of `haystack` string starting from and excluding
 // the first occurrence of `needle` to the end of `haystack`.
+// Eg: StrEx("12345", "3") => "45"
 func StrEx(haystack string, needle string) string {
 	if s := Str(haystack, needle); s != "" {
 		return s[1:]
@@ -33,6 +35,7 @@ func StrEx(haystack string, needle string) string {
 
 // StrTill returns part of `haystack` string ending to and including
 // the first occurrence of `needle` from the start of `haystack`.
+// Eg: StrTill("12345", "3") => "123"
 func StrTill(haystack string, needle string) string {
 	pos := strings.Index(haystack, needle)
 	if pos == NotFoundIndex || pos == 0 {
@@ -43,6 +46,7 @@ func StrTill(haystack string, needle string) string {
 
 // StrTillEx returns part of `haystack` string ending to and excluding
 // the first occurrence of `needle` from the start of `haystack`.
+// Eg: StrTillEx("12345", "3") => "12"
 func StrTillEx(haystack string, needle string) string {
 	pos := strings.Index(haystack, needle)
 	if pos == NotFoundIndex || pos == 0 {
@@ -53,26 +57,40 @@ func StrTillEx(haystack string, needle string) string {
 
 // SubStr returns a portion of string `str` specified by the `start` and `length` parameters.
 // The parameter `length` is optional, it uses the length of `str` in default.
+// Eg: SubStr("12345", 1, 2) => "23"
 func SubStr(str string, start int, length ...int) (substr string) {
 	strLength := len(str)
-	// Simple border checks.
 	if start < 0 {
-		start = 0
-	}
-	if start >= strLength {
-		start = strLength
-	}
-	end := strLength
-	if len(length) > 0 {
-		end = start + length[0]
-		if end < start {
-			end = strLength
+		if -start > strLength {
+			start = 0
+		} else {
+			start = strLength + start
 		}
+	} else if start > strLength {
+		return ""
 	}
-	if end > strLength {
-		end = strLength
+	realLength := 0
+	if len(length) > 0 {
+		realLength = length[0]
+		if realLength < 0 {
+			if -realLength > strLength-start {
+				realLength = 0
+			} else {
+				realLength = strLength - start + realLength
+			}
+		} else if realLength > strLength-start {
+			realLength = strLength - start
+		}
+	} else {
+		realLength = strLength - start
 	}
-	return str[start:end]
+
+	if realLength == strLength {
+		return str
+	} else {
+		end := start + realLength
+		return str[start:end]
+	}
 }
 
 // SubStrRune returns a portion of string `str` specified by the `start` and `length` parameters.
@@ -85,20 +103,32 @@ func SubStrRune(str string, start int, length ...int) (substr string) {
 		runesLength = len(runes)
 	)
 
-	// Simple border checks.
+	strLength := runesLength
 	if start < 0 {
-		start = 0
-	}
-	if start >= runesLength {
-		start = runesLength
-	}
-	end := runesLength
-	if len(length) > 0 {
-		end = start + length[0]
-		if end < start {
-			end = runesLength
+		if -start > strLength {
+			start = 0
+		} else {
+			start = strLength + start
 		}
+	} else if start > strLength {
+		return ""
 	}
+	realLength := 0
+	if len(length) > 0 {
+		realLength = length[0]
+		if realLength < 0 {
+			if -realLength > strLength-start {
+				realLength = 0
+			} else {
+				realLength = strLength - start + realLength
+			}
+		} else if realLength > strLength-start {
+			realLength = strLength - start
+		}
+	} else {
+		realLength = strLength - start
+	}
+	end := start + realLength
 	if end > runesLength {
 		end = runesLength
 	}

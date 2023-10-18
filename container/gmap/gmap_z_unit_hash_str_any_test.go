@@ -146,6 +146,7 @@ func Test_StrAnyMap_Lock(t *testing.T) {
 		})
 	})
 }
+
 func Test_StrAnyMap_Clone(t *testing.T) {
 	gtest.C(t, func(t *gtest.T) {
 		// clone 方法是深克隆
@@ -161,6 +162,7 @@ func Test_StrAnyMap_Clone(t *testing.T) {
 		t.AssertIN("b", m.Keys())
 	})
 }
+
 func Test_StrAnyMap_Merge(t *testing.T) {
 	gtest.C(t, func(t *gtest.T) {
 		m1 := gmap.NewStrAnyMap()
@@ -169,6 +171,10 @@ func Test_StrAnyMap_Merge(t *testing.T) {
 		m2.Set("b", "2")
 		m1.Merge(m2)
 		t.Assert(m1.Map(), map[string]interface{}{"a": 1, "b": "2"})
+
+		m3 := gmap.NewStrAnyMapFrom(nil)
+		m3.Merge(m2)
+		t.Assert(m3.Map(), m2.Map())
 	})
 }
 
@@ -240,11 +246,11 @@ func Test_StrAnyMap_Json(t *testing.T) {
 			"k2": "v2",
 		}
 		b, err := json.Marshal(data)
-		t.Assert(err, nil)
+		t.AssertNil(err)
 
 		m := gmap.NewStrAnyMap()
 		err = json.UnmarshalUseNumber(b, m)
-		t.Assert(err, nil)
+		t.AssertNil(err)
 		t.Assert(m.Get("k1"), data["k1"])
 		t.Assert(m.Get("k2"), data["k2"])
 	})
@@ -254,11 +260,11 @@ func Test_StrAnyMap_Json(t *testing.T) {
 			"k2": "v2",
 		}
 		b, err := json.Marshal(data)
-		t.Assert(err, nil)
+		t.AssertNil(err)
 
 		var m gmap.StrAnyMap
 		err = json.UnmarshalUseNumber(b, &m)
-		t.Assert(err, nil)
+		t.AssertNil(err)
 		t.Assert(m.Get("k1"), data["k1"])
 		t.Assert(m.Get("k2"), data["k2"])
 	})
@@ -283,6 +289,10 @@ func Test_StrAnyMap_Pop(t *testing.T) {
 
 		t.AssertNE(k1, k2)
 		t.AssertNE(v1, v2)
+
+		k3, v3 := m.Pop()
+		t.Assert(k3, "")
+		t.Assert(v3, "")
 	})
 }
 
@@ -314,6 +324,11 @@ func Test_StrAnyMap_Pops(t *testing.T) {
 
 		t.Assert(kArray.Unique().Len(), 3)
 		t.Assert(vArray.Unique().Len(), 3)
+
+		v := m.Pops(1)
+		t.AssertNil(v)
+		v = m.Pops(-1)
+		t.AssertNil(v)
 	})
 }
 
@@ -329,7 +344,7 @@ func TestStrAnyMap_UnmarshalValue(t *testing.T) {
 			"name": "john",
 			"map":  []byte(`{"k1":"v1","k2":"v2"}`),
 		}, &v)
-		t.Assert(err, nil)
+		t.AssertNil(err)
 		t.Assert(v.Name, "john")
 		t.Assert(v.Map.Size(), 2)
 		t.Assert(v.Map.Get("k1"), "v1")
@@ -345,10 +360,60 @@ func TestStrAnyMap_UnmarshalValue(t *testing.T) {
 				"k2": "v2",
 			},
 		}, &v)
-		t.Assert(err, nil)
+		t.AssertNil(err)
 		t.Assert(v.Name, "john")
 		t.Assert(v.Map.Size(), 2)
 		t.Assert(v.Map.Get("k1"), "v1")
 		t.Assert(v.Map.Get("k2"), "v2")
+	})
+}
+
+func Test_StrAnyMap_DeepCopy(t *testing.T) {
+	gtest.C(t, func(t *gtest.T) {
+		m := gmap.NewStrAnyMapFrom(g.MapStrAny{
+			"key1": "val1",
+			"key2": "val2",
+		})
+		t.Assert(m.Size(), 2)
+
+		n := m.DeepCopy().(*gmap.StrAnyMap)
+		n.Set("key1", "v1")
+		t.AssertNE(m.Get("key1"), n.Get("key1"))
+	})
+}
+
+func Test_StrAnyMap_IsSubOf(t *testing.T) {
+	gtest.C(t, func(t *gtest.T) {
+		m1 := gmap.NewStrAnyMapFrom(g.MapStrAny{
+			"k1": "v1",
+			"k2": "v2",
+		})
+		m2 := gmap.NewStrAnyMapFrom(g.MapStrAny{
+			"k2": "v2",
+		})
+		t.Assert(m1.IsSubOf(m2), false)
+		t.Assert(m2.IsSubOf(m1), true)
+		t.Assert(m2.IsSubOf(m2), true)
+	})
+}
+
+func Test_StrAnyMap_Diff(t *testing.T) {
+	gtest.C(t, func(t *gtest.T) {
+		m1 := gmap.NewStrAnyMapFrom(g.MapStrAny{
+			"0": "v0",
+			"1": "v1",
+			"2": "v2",
+			"3": 3,
+		})
+		m2 := gmap.NewStrAnyMapFrom(g.MapStrAny{
+			"0": "v0",
+			"2": "v2",
+			"3": "v3",
+			"4": "v4",
+		})
+		addedKeys, removedKeys, updatedKeys := m1.Diff(m2)
+		t.Assert(addedKeys, []string{"4"})
+		t.Assert(removedKeys, []string{"1"})
+		t.Assert(updatedKeys, []string{"3"})
 	})
 }

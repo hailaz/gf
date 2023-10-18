@@ -8,6 +8,8 @@ package gfsnotify
 
 import (
 	"context"
+	"github.com/gogf/gf/v2/errors/gcode"
+	"github.com/gogf/gf/v2/errors/gerror"
 
 	"github.com/gogf/gf/v2/container/glist"
 	"github.com/gogf/gf/v2/internal/intlog"
@@ -58,7 +60,7 @@ func (w *Watcher) eventLoop() {
 				// If there's no any callback of this path, it removes it from monitor.
 				callbacks := w.getCallbacks(event.Path)
 				if len(callbacks) == 0 {
-					w.watcher.Remove(event.Path)
+					_ = w.watcher.Remove(event.Path)
 					continue
 				}
 				switch {
@@ -117,10 +119,9 @@ func (w *Watcher) eventLoop() {
 							intlog.Printf(context.TODO(), "file creation event, watcher adds monitor for: %s", event.Path)
 						}
 					}
-
 				}
 				// Calling the callbacks in order.
-				for _, v := range callbacks {
+				for _, callback := range callbacks {
 					go func(callback *Callback) {
 						defer func() {
 							if err := recover(); err != nil {
@@ -128,12 +129,15 @@ func (w *Watcher) eventLoop() {
 								case callbackExitEventPanicStr:
 									w.RemoveCallback(callback.Id)
 								default:
+									if e, ok := err.(error); ok {
+										panic(gerror.WrapCode(gcode.CodeInternalPanic, e))
+									}
 									panic(err)
 								}
 							}
 						}()
 						callback.Func(event)
-					}(v)
+					}(callback)
 				}
 			} else {
 				break

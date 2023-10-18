@@ -13,6 +13,7 @@ import (
 	"github.com/gogf/gf/v2/util/gconv"
 )
 
+// IntIntMap implements map[int]int with RWMutex that has switch.
 type IntIntMap struct {
 	mu   rwmutex.RWMutex
 	data map[int]int
@@ -143,7 +144,7 @@ func (m *IntIntMap) Search(key int) (value int, found bool) {
 func (m *IntIntMap) Get(key int) (value int) {
 	m.mu.RLock()
 	if m.data != nil {
-		value, _ = m.data[key]
+		value = m.data[key]
 	}
 	m.mu.RUnlock()
 	return
@@ -426,6 +427,9 @@ func (m *IntIntMap) Merge(other *IntIntMap) {
 
 // String returns the map as a string.
 func (m *IntIntMap) String() string {
+	if m == nil {
+		return ""
+	}
 	b, _ := m.MarshalJSON()
 	return string(b)
 }
@@ -463,6 +467,66 @@ func (m *IntIntMap) UnmarshalValue(value interface{}) (err error) {
 	default:
 		for k, v := range gconv.Map(value) {
 			m.data[gconv.Int(k)] = gconv.Int(v)
+		}
+	}
+	return
+}
+
+// DeepCopy implements interface for deep copy of current type.
+func (m *IntIntMap) DeepCopy() interface{} {
+	if m == nil {
+		return nil
+	}
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	data := make(map[int]int, len(m.data))
+	for k, v := range m.data {
+		data[k] = v
+	}
+	return NewIntIntMapFrom(data, m.mu.IsSafe())
+}
+
+// IsSubOf checks whether the current map is a sub-map of `other`.
+func (m *IntIntMap) IsSubOf(other *IntIntMap) bool {
+	if m == other {
+		return true
+	}
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	other.mu.RLock()
+	defer other.mu.RUnlock()
+	for key, value := range m.data {
+		otherValue, ok := other.data[key]
+		if !ok {
+			return false
+		}
+		if otherValue != value {
+			return false
+		}
+	}
+	return true
+}
+
+// Diff compares current map `m` with map `other` and returns their different keys.
+// The returned `addedKeys` are the keys that are in map `m` but not in map `other`.
+// The returned `removedKeys` are the keys that are in map `other` but not in map `m`.
+// The returned `updatedKeys` are the keys that are both in map `m` and `other` but their values and not equal (`!=`).
+func (m *IntIntMap) Diff(other *IntIntMap) (addedKeys, removedKeys, updatedKeys []int) {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	other.mu.RLock()
+	defer other.mu.RUnlock()
+
+	for key := range m.data {
+		if _, ok := other.data[key]; !ok {
+			removedKeys = append(removedKeys, key)
+		} else if m.data[key] != other.data[key] {
+			updatedKeys = append(updatedKeys, key)
+		}
+	}
+	for key := range other.data {
+		if _, ok := m.data[key]; !ok {
+			addedKeys = append(addedKeys, key)
 		}
 	}
 	return

@@ -7,11 +7,12 @@
 package gconv_test
 
 import (
+	"testing"
+	"time"
+
 	"github.com/gogf/gf/v2/frame/g"
 	"github.com/gogf/gf/v2/test/gtest"
 	"github.com/gogf/gf/v2/util/gconv"
-	"testing"
-	"time"
 )
 
 type Duration time.Duration
@@ -36,6 +37,6 @@ func Test_Struct_CustomTimeDuration_Attribute(t *testing.T) {
 			"name":    "john",
 			"timeout": "1s",
 		}, &a)
-		t.Assert(err, nil)
+		t.AssertNil(err)
 	})
 }

@@ -19,6 +19,10 @@ import (
 // Func is the cache function that calculates and returns the value.
 type Func func(ctx context.Context) (value interface{}, err error)
 
+const (
+	DurationNoExpire = 0 // Expire duration that never expires.
+)
+
 // Default cache object.
 var defaultCache = New()
 
@@ -196,7 +200,7 @@ func MustGetOrSet(ctx context.Context, key interface{}, value interface{}, durat
 
 // MustGetOrSetFunc acts like GetOrSetFunc, but it panics if any error occurs.
 func MustGetOrSetFunc(ctx context.Context, key interface{}, f Func, duration time.Duration) *gvar.Var {
-	return defaultCache.MustGetOrSet(ctx, key, f, duration)
+	return defaultCache.MustGetOrSetFunc(ctx, key, f, duration)
 }
 
 // MustGetOrSetFuncLock acts like GetOrSetFuncLock, but it panics if any error occurs.

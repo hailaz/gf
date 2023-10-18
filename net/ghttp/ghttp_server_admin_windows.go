@@ -9,7 +9,7 @@
 
 package ghttp
 
-// registerSignalHandler does nothing on windows platform.
+// registerSignalHandler does nothing on window platform.
 func handleProcessSignal() {
 
 }

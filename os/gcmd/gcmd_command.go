@@ -28,6 +28,7 @@ type Command struct {
 	Examples      string        // Usage examples.
 	Additional    string        // Additional info about this command, which will be appended to the end of help info.
 	Strict        bool          // Strict parsing options, which means it returns error if invalid option given.
+	CaseSensitive bool          // CaseSensitive parsing options, which means it parses input options in case-sensitive way.
 	Config        string        // Config node name, which also retrieves the values from config component along with command line.
 	parent        *Command      // Parent command for internal usage.
 	commands      []*Command    // Sub commands of this command.
@@ -102,9 +103,7 @@ func (c *Command) doAddCommand(command *Command) error {
 
 // AddObject adds one or more sub-commands to current command using struct object.
 func (c *Command) AddObject(objects ...interface{}) error {
-	var (
-		commands []*Command
-	)
+	var commands []*Command
 	for _, object := range objects {
 		rootCommand, err := NewFromObject(object)
 		if err != nil {

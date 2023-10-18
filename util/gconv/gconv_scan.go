@@ -53,7 +53,6 @@ func Scan(params interface{}, pointer interface{}, mapping ...map[string]string)
 				pointerType,
 			)
 		}
-
 	}
 	// Direct assignment checks!
 	var (
@@ -113,58 +112,70 @@ func Scan(params interface{}, pointer interface{}, mapping ...map[string]string)
 // Note that the parameter `structSlicePointer` should be type of *[]struct/*[]*struct.
 //
 // Usage example 1: Normal attribute struct relation:
-// type EntityUser struct {
-// 	   Uid  int
-// 	   Name string
-// }
-// type EntityUserDetail struct {
-// 	   Uid     int
-// 	   Address string
-// }
-// type EntityUserScores struct {
-// 	   Id     int
-// 	   Uid    int
-// 	   Score  int
-// 	   Course string
-// }
-// type Entity struct {
-//     User       *EntityUser
-// 	   UserDetail *EntityUserDetail
-// 	   UserScores []*EntityUserScores
-// }
-// var users []*Entity
-// ScanList(records, &users, "User")
-// ScanList(records, &users, "User", "uid")
-// ScanList(records, &users, "UserDetail", "User", "uid:Uid")
-// ScanList(records, &users, "UserScores", "User", "uid:Uid")
-// ScanList(records, &users, "UserScores", "User", "uid")
 //
+//	type EntityUser struct {
+//	    Uid  int
+//	    Name string
+//	}
+//
+//	type EntityUserDetail struct {
+//	    Uid     int
+//	    Address string
+//	}
+//
+//	type EntityUserScores struct {
+//	    Id     int
+//	    Uid    int
+//	    Score  int
+//	    Course string
+//	}
+//
+//	type Entity struct {
+//	    User       *EntityUser
+//	    UserDetail *EntityUserDetail
+//	    UserScores []*EntityUserScores
+//	}
+//
+// var users []*Entity
+// var userRecords   = EntityUser{Uid: 1, Name:"john"}
+// var detailRecords = EntityUser{Uid: 1, Address: "chengdu"}
+// var scoresRecords = EntityUser{Id: 1, Uid: 1, Score: 100, Course: "math"}
+// ScanList(userRecords, &users, "User")
+// ScanList(userRecords, &users, "User", "uid")
+// ScanList(detailRecords, &users, "UserDetail", "User", "uid:Uid")
+// ScanList(scoresRecords, &users, "UserScores", "User", "uid:Uid")
+// ScanList(scoresRecords, &users, "UserScores", "User", "uid")
 //
 // Usage example 2: Embedded attribute struct relation:
-// type EntityUser struct {
-// 	   Uid  int
-// 	   Name string
-// }
-// type EntityUserDetail struct {
-// 	   Uid     int
-// 	   Address string
-// }
-// type EntityUserScores struct {
-// 	   Id    int
-// 	   Uid   int
-// 	   Score int
-// }
-// type Entity struct {
-// 	   EntityUser
-// 	   UserDetail EntityUserDetail
-// 	   UserScores []EntityUserScores
-// }
 //
-// var users []*Entity
-// ScanList(records, &users)
-// ScanList(records, &users, "UserDetail", "uid")
-// ScanList(records, &users, "UserScores", "uid")
+//	type EntityUser struct {
+//		   Uid  int
+//		   Name string
+//	}
 //
+//	type EntityUserDetail struct {
+//		   Uid     int
+//		   Address string
+//	}
+//
+//	type EntityUserScores struct {
+//		   Id    int
+//		   Uid   int
+//		   Score int
+//	}
+//
+//	type Entity struct {
+//		   EntityUser
+//		   UserDetail EntityUserDetail
+//		   UserScores []EntityUserScores
+//	}
+//
+// var userRecords   = EntityUser{Uid: 1, Name:"john"}
+// var detailRecords = EntityUser{Uid: 1, Address: "chengdu"}
+// var scoresRecords = EntityUser{Id: 1, Uid: 1, Score: 100, Course: "math"}
+// ScanList(userRecords, &users)
+// ScanList(detailRecords, &users, "UserDetail", "uid")
+// ScanList(scoresRecords, &users, "UserScores", "uid")
 //
 // The parameters "User/UserDetail/UserScores" in the example codes specify the target attribute struct
 // that current result will be bound to.
@@ -192,7 +203,9 @@ func ScanList(structSlice interface{}, structSlicePointer interface{}, bindToAtt
 
 // doScanList converts `structSlice` to struct slice which contains other complex struct attributes recursively.
 // Note that the parameter `structSlicePointer` should be type of *[]struct/*[]*struct.
-func doScanList(structSlice interface{}, structSlicePointer interface{}, bindToAttrName, relationAttrName, relationFields string) (err error) {
+func doScanList(
+	structSlice interface{}, structSlicePointer interface{}, bindToAttrName, relationAttrName, relationFields string,
+) (err error) {
 	var (
 		maps = Maps(structSlice)
 	)

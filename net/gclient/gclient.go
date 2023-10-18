@@ -18,6 +18,7 @@ import (
 	"github.com/gogf/gf/v2"
 	"github.com/gogf/gf/v2/errors/gerror"
 	"github.com/gogf/gf/v2/net/gsel"
+	"github.com/gogf/gf/v2/net/gsvc"
 	"github.com/gogf/gf/v2/os/gfile"
 )
 
@@ -30,21 +31,14 @@ type Client struct {
 	authUser          string            // HTTP basic authentication: user.
 	authPass          string            // HTTP basic authentication: pass.
 	retryCount        int               // Retry count when request fails.
+	noUrlEncode       bool              // No url encoding for request parameters.
 	retryInterval     time.Duration     // Retry interval when request fails.
 	middlewareHandler []HandlerFunc     // Interceptor handlers
-	selectorBuilder   gsel.Builder      // Builder for request balance.
+	discovery         gsvc.Discovery    // Discovery for service.
+	builder           gsel.Builder      // Builder for request balance.
 }
 
 const (
-	httpMethodGet             = `GET`
-	httpMethodPut             = `PUT`
-	httpMethodPost            = `POST`
-	httpMethodDelete          = `DELETE`
-	httpMethodHead            = `HEAD`
-	httpMethodPatch           = `PATCH`
-	httpMethodConnect         = `CONNECT`
-	httpMethodOptions         = `OPTIONS`
-	httpMethodTrace           = `TRACE`
 	httpProtocolName          = `http`
 	httpParamFileHolder       = `@file:`
 	httpRegexParamJson        = `^[\w\[\]]+=.+`
@@ -75,8 +69,10 @@ func New() *Client {
 				DisableKeepAlives: true,
 			},
 		},
-		header:  make(map[string]string),
-		cookies: make(map[string]string),
+		header:    make(map[string]string),
+		cookies:   make(map[string]string),
+		builder:   gsel.GetBuilder(),
+		discovery: gsvc.GetRegistry(),
 	}
 	c.header[httpHeaderUserAgent] = defaultClientAgent
 	// It enables OpenTelemetry for client in default.
@@ -88,13 +84,17 @@ func New() *Client {
 func (c *Client) Clone() *Client {
 	newClient := New()
 	*newClient = *c
-	newClient.header = make(map[string]string)
-	newClient.cookies = make(map[string]string)
-	for k, v := range c.header {
-		newClient.header[k] = v
+	if len(c.header) > 0 {
+		newClient.header = make(map[string]string)
+		for k, v := range c.header {
+			newClient.header[k] = v
+		}
 	}
-	for k, v := range c.cookies {
-		newClient.cookies[k] = v
+	if len(c.cookies) > 0 {
+		newClient.cookies = make(map[string]string)
+		for k, v := range c.cookies {
+			newClient.cookies[k] = v
+		}
 	}
 	return newClient
 }

@@ -7,11 +7,11 @@
 package gconv_test
 
 import (
-	"github.com/gogf/gf/v2/container/gvar"
-	"github.com/gogf/gf/v2/frame/g"
 	"testing"
 	"time"
 
+	"github.com/gogf/gf/v2/container/gvar"
+	"github.com/gogf/gf/v2/frame/g"
 	"github.com/gogf/gf/v2/os/gtime"
 	"github.com/gogf/gf/v2/test/gtest"
 	"github.com/gogf/gf/v2/util/gconv"
@@ -21,11 +21,13 @@ func Test_Time(t *testing.T) {
 	gtest.C(t, func(t *gtest.T) {
 		t.AssertEQ(gconv.Duration(""), time.Duration(int64(0)))
 		t.AssertEQ(gconv.GTime(""), gtime.New())
+		t.AssertEQ(gconv.GTime(nil), nil)
 	})
 
 	gtest.C(t, func(t *gtest.T) {
 		s := "2011-10-10 01:02:03.456"
 		t.AssertEQ(gconv.GTime(s), gtime.NewFromStr(s))
+		t.AssertEQ(gconv.Time(nil), time.Time{})
 		t.AssertEQ(gconv.Time(s), gtime.NewFromStr(s).Time)
 		t.AssertEQ(gconv.Duration(100), 100*time.Nanosecond)
 	})
@@ -74,5 +76,19 @@ func Test_Time_Slice_Attribute(t *testing.T) {
 		t.Assert(s.One, "2021-01-12 12:34:58")
 		t.Assert(s.Arr[0], "2021-01-12 12:34:56")
 		t.Assert(s.Arr[1], "2021-01-12 12:34:57")
+	})
+}
+
+func Test_Issue2901(t *testing.T) {
+	type GameApp2 struct {
+		ForceUpdateTime *time.Time
+	}
+	gtest.C(t, func(t *gtest.T) {
+		src := map[string]interface{}{
+			"FORCE_UPDATE_TIME": time.Now(),
+		}
+		m := GameApp2{}
+		err := gconv.Scan(src, &m)
+		t.AssertNil(err)
 	})
 }

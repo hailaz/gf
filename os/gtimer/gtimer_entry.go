@@ -8,6 +8,7 @@ package gtimer
 
 import (
 	"context"
+	"github.com/gogf/gf/v2/errors/gcode"
 
 	"github.com/gogf/gf/v2/container/gtype"
 	"github.com/gogf/gf/v2/errors/gerror"
@@ -26,7 +27,7 @@ type Entry struct {
 	infinite    *gtype.Bool     // No times limit.
 }
 
-// JobFunc is the job function.
+// JobFunc is the timing called job function in timer.
 type JobFunc = func(ctx context.Context)
 
 // Status returns the status of the job.
@@ -51,7 +52,7 @@ func (entry *Entry) Run() {
 					if v, ok := exception.(error); ok && gerror.HasStack(v) {
 						panic(v)
 					} else {
-						panic(gerror.Newf(`exception recovered: %+v`, exception))
+						panic(gerror.NewCodef(gcode.CodeInternalPanic, "exception recovered: %+v", exception))
 					}
 				} else {
 					entry.Close()

@@ -8,13 +8,17 @@ package gdb
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"reflect"
 	"regexp"
 	"strings"
 	"time"
 
+	"github.com/gogf/gf/v2/container/garray"
+	"github.com/gogf/gf/v2/encoding/gjson"
 	"github.com/gogf/gf/v2/internal/empty"
+	"github.com/gogf/gf/v2/internal/reflection"
 	"github.com/gogf/gf/v2/internal/utils"
 	"github.com/gogf/gf/v2/os/gstructs"
 	"github.com/gogf/gf/v2/os/gtime"
@@ -40,12 +44,12 @@ type iInterfaces interface {
 	Interfaces() []interface{}
 }
 
-// iMapStrAny is the interface support for converting struct parameter to map.
-type iMapStrAny interface {
-	MapStrAny() map[string]interface{}
+// iNil if the type assert api for IsNil.
+type iNil interface {
+	IsNil() bool
 }
 
-// iTableName is the interface for retrieving table name fro struct.
+// iTableName is the interface for retrieving table name for struct.
 type iTableName interface {
 	TableName() string
 }
@@ -63,9 +67,57 @@ var (
 	// quoteWordReg is the regular expression object for a word check.
 	quoteWordReg = regexp.MustCompile(`^[a-zA-Z0-9\-_]+$`)
 
-	// Priority tags for struct converting for orm field mapping.
+	// structTagPriority tags for struct converting for orm field mapping.
 	structTagPriority = append([]string{OrmTagForStruct}, gconv.StructTagPriority...)
 )
+
+// WithDB injects given db object into context and returns a new context.
+func WithDB(ctx context.Context, db DB) context.Context {
+	if db == nil {
+		return ctx
+	}
+	dbCtx := db.GetCtx()
+	if ctxDb := DBFromCtx(dbCtx); ctxDb != nil {
+		return dbCtx
+	}
+	ctx = context.WithValue(ctx, ctxKeyForDB, db)
+	return ctx
+}
+
+// DBFromCtx retrieves and returns DB object from context.
+func DBFromCtx(ctx context.Context) DB {
+	if ctx == nil {
+		return nil
+	}
+	v := ctx.Value(ctxKeyForDB)
+	if v != nil {
+		return v.(DB)
+	}
+	return nil
+}
+
+// ToSQL formats and returns the last one of sql statements in given closure function.
+func ToSQL(ctx context.Context, f func(ctx context.Context) error) (sql string, err error) {
+	var manager = &CatchSQLManager{
+		SQLArray: garray.NewStrArray(),
+		DoCommit: false,
+	}
+	ctx = context.WithValue(ctx, ctxKeyCatchSQL, manager)
+	err = f(ctx)
+	sql, _ = manager.SQLArray.PopRight()
+	return
+}
+
+// CatchSQL catches and returns all sql statements that are executed in given closure function.
+func CatchSQL(ctx context.Context, f func(ctx context.Context) error) (sqlArray []string, err error) {
+	var manager = &CatchSQLManager{
+		SQLArray: garray.NewStrArray(),
+		DoCommit: true,
+	}
+	ctx = context.WithValue(ctx, ctxKeyCatchSQL, manager)
+	err = f(ctx)
+	return manager.SQLArray.Slice(), err
+}
 
 // isDoStruct checks and returns whether given type is a DO struct.
 func isDoStruct(object interface{}) bool {
@@ -144,17 +196,21 @@ func ListItemValuesUnique(list interface{}, key string, subKey ...interface{}) [
 }
 
 // GetInsertOperationByOption returns proper insert option with given parameter `option`.
-func GetInsertOperationByOption(option int) string {
+func GetInsertOperationByOption(option InsertOption) string {
 	var operator string
 	switch option {
 	case InsertOptionReplace:
-		operator = "REPLACE"
+		operator = InsertOperationReplace
 	case InsertOptionIgnore:
-		operator = "INSERT IGNORE"
+		operator = InsertOperationIgnore
 	default:
-		operator = "INSERT"
+		operator = InsertOperationInsert
 	}
 	return operator
+}
+
+func anyValueToMapBeforeToRecord(value interface{}) map[string]interface{} {
+	return gconv.Map(value, structTagPriority...)
 }
 
 // DataToMapDeep converts `value` to map type recursively(if attribute struct is embedded).
@@ -164,30 +220,22 @@ func DataToMapDeep(value interface{}) map[string]interface{} {
 	m := gconv.Map(value, structTagPriority...)
 	for k, v := range m {
 		switch v.(type) {
-		case time.Time, *time.Time, gtime.Time, *gtime.Time:
+		case time.Time, *time.Time, gtime.Time, *gtime.Time, gjson.Json, *gjson.Json:
 			m[k] = v
-
-		default:
-			// Use string conversion in default.
-			if s, ok := v.(iString); ok {
-				m[k] = s.String()
-			} else {
-				m[k] = v
-			}
 		}
 	}
 	return m
 }
 
-// doHandleTableName adds prefix string and quote chars for the table. It handles table string like:
+// doQuoteTableName adds prefix string and quote chars for table name. It handles table string like:
 // "user", "user u", "user,user_detail", "user u, user_detail ut", "user as u, user_detail as ut",
 // "user.user u", "`user`.`user` u".
 //
-// Note that, this will automatically checks the table prefix whether already added, if true it does
-// nothing to the table name, or else adds the prefix to the table name.
-func doHandleTableName(table, prefix, charLeft, charRight string) string {
+// Note that, this will automatically check the table prefix whether already added, if true it does
+// nothing to the table name, or else adds the prefix to the table name and returns new table name with prefix.
+func doQuoteTableName(table, prefix, charLeft, charRight string) string {
 	var (
-		index  = 0
+		index  int
 		chars  = charLeft + charRight
 		array1 = gstr.SplitAndTrim(table, ",")
 	)
@@ -263,9 +311,12 @@ func getFieldsFromStructOrMap(structOrMap interface{}) (fields []string) {
 			Pointer:         structOrMap,
 			RecursiveOption: gstructs.RecursiveOptionEmbeddedNoTag,
 		})
+		var ormTagValue string
 		for _, structField := range structFields {
-			if tag := structField.Tag(OrmTagForStruct); tag != "" && gregex.IsMatchString(regularFieldNameRegPattern, tag) {
-				fields = append(fields, tag)
+			ormTagValue = structField.Tag(OrmTagForStruct)
+			ormTagValue = gstr.Split(gstr.Trim(ormTagValue), ",")[0]
+			if ormTagValue != "" && gregex.IsMatchString(regularFieldNameRegPattern, ormTagValue) {
+				fields = append(fields, ormTagValue)
 			} else {
 				fields = append(fields, structField.Name())
 			}
@@ -318,19 +369,8 @@ func GetPrimaryKeyCondition(primary string, where ...interface{}) (newWhereCondi
 	return where
 }
 
-// formatSql formats the sql string and its arguments before executing.
-// The internal handleArguments function might be called twice during the SQL procedure,
-// but do not worry about it, it's safe and efficient.
-func formatSql(sql string, args []interface{}) (newSql string, newArgs []interface{}) {
-	// DO NOT do this as there may be multiple lines and comments in the sql.
-	// sql = gstr.Trim(sql)
-	// sql = gstr.Replace(sql, "\n", " ")
-	// sql, _ = gregex.ReplaceString(`\s{2,}`, ` `, sql)
-	return handleArguments(sql, args)
-}
-
 type formatWhereHolderInput struct {
-	ModelWhereHolder
+	WhereHolder
 	OmitNil   bool
 	OmitEmpty bool
 	Schema    string
@@ -363,10 +403,10 @@ func isKeyValueCanBeOmitEmpty(omitEmpty bool, whereType string, key, value inter
 }
 
 // formatWhereHolder formats where statement and its arguments for `Where` and `Having` statements.
-func formatWhereHolder(db DB, in formatWhereHolderInput) (newWhere string, newArgs []interface{}) {
+func formatWhereHolder(ctx context.Context, db DB, in formatWhereHolderInput) (newWhere string, newArgs []interface{}) {
 	var (
 		buffer      = bytes.NewBuffer(nil)
-		reflectInfo = utils.OriginValueAndKind(in.Where)
+		reflectInfo = reflection.OriginValueAndKind(in.Where)
 	)
 	switch reflectInfo.OriginKind {
 	case reflect.Array, reflect.Slice:
@@ -392,7 +432,7 @@ func formatWhereHolder(db DB, in formatWhereHolderInput) (newWhere string, newAr
 		}
 
 	case reflect.Struct:
-		// If the `where` parameter is DO struct, it then adds `OmitNil` option for this condition,
+		// If the `where` parameter is `DO` struct, it then adds `OmitNil` option for this condition,
 		// which will filter all nil parameters in `where`.
 		if isDoStruct(in.Where) {
 			in.OmitNil = true
@@ -444,12 +484,19 @@ func formatWhereHolder(db DB, in formatWhereHolderInput) (newWhere string, newAr
 		}
 		// Mapping and filtering fields if `Table` is given.
 		if in.Table != "" {
-			data, _ = db.GetCore().mappingAndFilterData(in.Schema, in.Table, data, true)
+			data, _ = db.GetCore().mappingAndFilterData(ctx, in.Schema, in.Table, data, true)
 		}
 		// Put the struct attributes in sequence in Where statement.
+		var ormTagValue string
 		for i := 0; i < reflectType.NumField(); i++ {
 			structField = reflectType.Field(i)
-			foundKey, foundValue := gutil.MapPossibleItemByKey(data, structField.Name)
+			// Use tag value from `orm` as field name if specified.
+			ormTagValue = structField.Tag.Get(OrmTagForStruct)
+			ormTagValue = gstr.Split(gstr.Trim(ormTagValue), ",")[0]
+			if ormTagValue == "" {
+				ormTagValue = structField.Name
+			}
+			foundKey, foundValue := gutil.MapPossibleItemByKey(data, ormTagValue)
 			if foundKey != "" {
 				if in.OmitNil && empty.IsNil(foundValue) {
 					continue
@@ -482,7 +529,7 @@ func formatWhereHolder(db DB, in formatWhereHolderInput) (newWhere string, newAr
 			return
 		}
 		// Usually a string.
-		whereStr := gconv.String(in.Where)
+		whereStr := gstr.Trim(gconv.String(in.Where))
 		// Is `whereStr` a field name which composed as a key-value condition?
 		// Eg:
 		// Where("id", 1)
@@ -504,7 +551,7 @@ func formatWhereHolder(db DB, in formatWhereHolderInput) (newWhere string, newAr
 		// If the first part is column name, it automatically adds prefix to the column.
 		if in.Prefix != "" {
 			array := gstr.Split(whereStr, " ")
-			if ok, _ := db.GetCore().HasField(in.Table, array[0]); ok {
+			if ok, _ := db.GetCore().HasField(ctx, in.Table, array[0]); ok {
 				whereStr = in.Prefix + "." + whereStr
 			}
 		}
@@ -516,14 +563,16 @@ func formatWhereHolder(db DB, in formatWhereHolderInput) (newWhere string, newAr
 			if i >= len(in.Args) {
 				break
 			}
+			// ===============================================================
 			// Sub query, which is always used along with a string condition.
-			if model, ok := in.Args[i].(*Model); ok {
+			// ===============================================================
+			if subModel, ok := in.Args[i].(*Model); ok {
 				index := -1
 				whereStr, _ = gregex.ReplaceStringFunc(`(\?)`, whereStr, func(s string) string {
 					index++
 					if i+len(newArgs) == index {
-						sqlWithHolder, holderArgs := model.getFormattedSqlAndArgs(queryTypeNormal, false)
-						newArgs = append(newArgs, holderArgs...)
+						sqlWithHolder, holderArgs := subModel.getHolderAndArgsAsSubModel(ctx)
+						in.Args = gutil.SliceInsertAfter(in.Args, i, holderArgs...)
 						// Automatically adding the brackets.
 						return "(" + sqlWithHolder + ")"
 					}
@@ -707,7 +756,7 @@ func handleArguments(sql string, args []interface{}) (newSql string, newArgs []i
 	// Handles the slice arguments.
 	if len(args) > 0 {
 		for index, arg := range args {
-			reflectInfo := utils.OriginValueAndKind(arg)
+			reflectInfo := reflection.OriginValueAndKind(arg)
 			switch reflectInfo.OriginKind {
 			case reflect.Slice, reflect.Array:
 				// It does not split the type of []byte.
@@ -762,24 +811,18 @@ func handleArguments(sql string, args []interface{}) (newSql string, newArgs []i
 
 			// Special struct handling.
 			case reflect.Struct:
-				switch v := arg.(type) {
+				switch arg.(type) {
 				// The underlying driver supports time.Time/*time.Time types.
 				case time.Time, *time.Time:
 					newArgs = append(newArgs, arg)
 					continue
 
-				// Special handling for gtime.Time/*gtime.Time.
-				//
-				// DO NOT use its underlying gtime.Time.Time as its argument,
-				// because the std time.Time will be converted to certain timezone
-				// according to underlying driver. And the underlying driver also
-				// converts the time.Time to string automatically as the following does.
 				case gtime.Time:
-					newArgs = append(newArgs, v.String())
+					newArgs = append(newArgs, arg.(gtime.Time).Time)
 					continue
 
 				case *gtime.Time:
-					newArgs = append(newArgs, v.String())
+					newArgs = append(newArgs, arg.(*gtime.Time).Time)
 					continue
 
 				default:
@@ -817,7 +860,7 @@ func FormatSqlWithArgs(sql string, args []interface{}) string {
 				if v, ok := args[index].(Raw); ok {
 					return gconv.String(v)
 				}
-				reflectInfo := utils.OriginValueAndKind(args[index])
+				reflectInfo := reflection.OriginValueAndKind(args[index])
 				if reflectInfo.OriginKind == reflect.Ptr &&
 					(reflectInfo.OriginValue.IsNil() || !reflectInfo.OriginValue.IsValid()) {
 					return "null"

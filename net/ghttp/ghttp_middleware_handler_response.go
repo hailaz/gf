@@ -7,11 +7,13 @@
 package ghttp
 
 import (
+	"net/http"
+
 	"github.com/gogf/gf/v2/errors/gcode"
 	"github.com/gogf/gf/v2/errors/gerror"
-	"github.com/gogf/gf/v2/internal/intlog"
 )
 
+// DefaultHandlerResponse is the default implementation of HandlerResponse.
 type DefaultHandlerResponse struct {
 	Code    int         `json:"code"    dc:"Error code"`
 	Message string      `json:"message" dc:"Error message"`
@@ -28,33 +30,38 @@ func MiddlewareHandlerResponse(r *Request) {
 	}
 
 	var (
-		err         error
-		res         interface{}
-		ctx         = r.Context()
-		internalErr error
+		msg  string
+		err  = r.GetError()
+		res  = r.GetHandlerResponse()
+		code = gerror.Code(err)
 	)
-	res, err = r.GetHandlerResponse()
 	if err != nil {
-		code := gerror.Code(err)
 		if code == gcode.CodeNil {
 			code = gcode.CodeInternalError
 		}
-		internalErr = r.Response.WriteJson(DefaultHandlerResponse{
-			Code:    code.Code(),
-			Message: err.Error(),
-			Data:    nil,
-		})
-		if internalErr != nil {
-			intlog.Errorf(ctx, `%+v`, internalErr)
+		msg = err.Error()
+	} else {
+		if r.Response.Status > 0 && r.Response.Status != http.StatusOK {
+			msg = http.StatusText(r.Response.Status)
+			switch r.Response.Status {
+			case http.StatusNotFound:
+				code = gcode.CodeNotFound
+			case http.StatusForbidden:
+				code = gcode.CodeNotAuthorized
+			default:
+				code = gcode.CodeUnknown
+			}
+			// It creates error as it can be retrieved by other middlewares.
+			err = gerror.NewCode(code, msg)
+			r.SetError(err)
+		} else {
+			code = gcode.CodeOK
 		}
-		return
 	}
-	internalErr = r.Response.WriteJson(DefaultHandlerResponse{
-		Code:    gcode.CodeOK.Code(),
-		Message: "",
+
+	r.Response.WriteJson(DefaultHandlerResponse{
+		Code:    code.Code(),
+		Message: msg,
 		Data:    res,
 	})
-	if internalErr != nil {
-		intlog.Errorf(ctx, `%+v`, internalErr)
-	}
 }
