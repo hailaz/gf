@@ -16,6 +16,52 @@ import (
 	"github.com/gogf/gf/v2/util/gconv"
 )
 
+func TestConverter_ConvertWithRefer(t *testing.T) {
+	type tA struct {
+		Val int
+	}
+
+	type tB struct {
+		Val1 int32
+		Val2 string
+	}
+
+	gtest.C(t, func(t *gtest.T) {
+		err := gconv.RegisterConverter(func(a tA) (b *tB, err error) {
+			b = &tB{
+				Val1: int32(a.Val),
+				Val2: "abcd",
+			}
+			return
+		})
+		t.AssertNil(err)
+	})
+
+	gtest.C(t, func(t *gtest.T) {
+		a := &tA{
+			Val: 1,
+		}
+		var b tB
+		result := gconv.ConvertWithRefer(a, &b)
+		t.Assert(result.(*tB), &tB{
+			Val1: 1,
+			Val2: "abcd",
+		})
+	})
+
+	gtest.C(t, func(t *gtest.T) {
+		a := &tA{
+			Val: 1,
+		}
+		var b tB
+		result := gconv.ConvertWithRefer(a, b)
+		t.Assert(result.(tB), tB{
+			Val1: 1,
+			Val2: "abcd",
+		})
+	})
+}
+
 func TestConverter_Struct(t *testing.T) {
 	type tA struct {
 		Val int
@@ -270,5 +316,62 @@ func TestConverter_CustomBasicType_ToStruct(t *testing.T) {
 		t.AssertNil(err)
 		t.AssertNE(b, nil)
 		t.Assert(b.S, a)
+	})
+}
+
+// fix: https://github.com/gogf/gf/issues/3099
+func TestConverter_CustomTimeType_ToStruct(t *testing.T) {
+	type timestamppb struct {
+		S string
+	}
+	type CustomGTime struct {
+		T *gtime.Time
+	}
+	type CustomPbTime struct {
+		T *timestamppb
+	}
+	gtest.C(t, func(t *gtest.T) {
+		var (
+			a = CustomGTime{
+				T: gtime.NewFromStrFormat("2023-10-26", "Y-m-d"),
+			}
+			b *CustomPbTime
+		)
+		err := gconv.Scan(a, &b)
+		t.AssertNil(err)
+		t.AssertNE(b, nil)
+		t.Assert(b.T.S, "")
+	})
+
+	gtest.C(t, func(t *gtest.T) {
+		err := gconv.RegisterConverter(func(in gtime.Time) (*timestamppb, error) {
+			return &timestamppb{
+				S: in.Local().Format("Y-m-d"),
+			}, nil
+		})
+		t.AssertNil(err)
+		err = gconv.RegisterConverter(func(in timestamppb) (*gtime.Time, error) {
+			return gtime.NewFromStr(in.S), nil
+		})
+		t.AssertNil(err)
+	})
+	gtest.C(t, func(t *gtest.T) {
+		var (
+			a = CustomGTime{
+				T: gtime.NewFromStrFormat("2023-10-26", "Y-m-d"),
+			}
+			b *CustomPbTime
+			c *CustomGTime
+		)
+		err := gconv.Scan(a, &b)
+		t.AssertNil(err)
+		t.AssertNE(b, nil)
+		t.AssertNE(b.T, nil)
+
+		err = gconv.Scan(b, &c)
+		t.AssertNil(err)
+		t.AssertNE(c, nil)
+		t.AssertNE(c.T, nil)
+		t.AssertEQ(a.T.Timestamp(), c.T.Timestamp())
 	})
 }
