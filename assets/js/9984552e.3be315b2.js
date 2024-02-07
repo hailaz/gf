@@ -1,0 +1,1 @@
+"use strict";(self.webpackChunkgfdoc=self.webpackChunkgfdoc||[]).push([[66225],{62602:a=>{a.exports=JSON.parse('{"label":"hola","permalink":"/gf/blog/tags/hola","allTagsPath":"/gf/blog/tags","count":1,"unlisted":false}')}}]);

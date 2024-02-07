@@ -1,0 +1,1 @@
+"use strict";(self.webpackChunkgfdoc=self.webpackChunkgfdoc||[]).push([[2969],{70233:e=>{e.exports=JSON.parse('{"permalink":"/gf/blog/tags/docusaurus","page":1,"postsPerPage":10,"totalPages":1,"totalCount":4,"blogDescription":"Blog","blogTitle":"Blog"}')}}]);
