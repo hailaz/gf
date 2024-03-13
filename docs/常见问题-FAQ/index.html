@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="generator" content="Docusaurus v3.1.1">
 <title data-rh="true">常见问题(FAQ) | GoFrame</title><meta data-rh="true" name="viewport" content="width=device-width,initial-scale=1"><meta data-rh="true" name="twitter:card" content="summary_large_image"><meta data-rh="true" property="og:image" content="https://goframe.org/gf/img/docusaurus-social-card.jpg"><meta data-rh="true" name="twitter:image" content="https://goframe.org/gf/img/docusaurus-social-card.jpg"><meta data-rh="true" property="og:url" content="https://goframe.org/gf/docs/常见问题-FAQ"><meta data-rh="true" property="og:locale" content="zh_Hans"><meta data-rh="true" name="docusaurus_locale" content="zh-Hans"><meta data-rh="true" name="docsearch:language" content="zh-Hans"><meta data-rh="true" name="docusaurus_version" content="current"><meta data-rh="true" name="docusaurus_tag" content="docs-default-current"><meta data-rh="true" name="docsearch:version" content="current"><meta data-rh="true" name="docsearch:docusaurus_tag" content="docs-default-current"><meta data-rh="true" property="og:title" content="常见问题(FAQ) | GoFrame"><meta data-rh="true" name="description" content="寄语："><meta data-rh="true" property="og:description" content="寄语："><link data-rh="true" rel="icon" href="/gf/img/favicon.ico"><link data-rh="true" rel="canonical" href="https://goframe.org/gf/docs/常见问题-FAQ"><link data-rh="true" rel="alternate" href="https://goframe.org/gf/docs/常见问题-FAQ" hreflang="zh-Hans"><link data-rh="true" rel="alternate" href="https://goframe.org/gf/docs/常见问题-FAQ" hreflang="x-default"><link rel="stylesheet" href="/gf/assets/css/styles.8f549afe.css">
-<script src="/gf/assets/js/runtime~main.c0742948.js" defer="defer"></script>
+<script src="/gf/assets/js/runtime~main.ccbb42c7.js" defer="defer"></script>
 <script src="/gf/assets/js/main.99166ffa.js" defer="defer"></script>
 </head>
 <body class="navigation-with-keyboard" data-theme="light">
@@ -17,7 +17,7 @@
 <h3 class="anchor anchorWithStickyNavbar_LWe7" id="1程序产生异常但是程序直接崩溃未被框架自动捕获">1、程序产生异常，但是程序直接崩溃未被框架自动捕获<a href="#1程序产生异常但是程序直接崩溃未被框架自动捕获" class="hash-link" aria-label="1、程序产生异常，但是程序直接崩溃未被框架自动捕获的直接链接" title="1、程序产生异常，但是程序直接崩溃未被框架自动捕获的直接链接">​</a></h3>
 <p>使用 <code>GoFrame</code> 框架是严谨和安全的，如果程序产生了异常，会默认被框架捕获。如果未被自动捕获，那么可能是由于程序逻辑自行开了新的 <code>goroutine</code>，在新的 <code>goroutine</code> 中产生了异常。因此这里有两个方案可供大家选择：</p>
 <ul>
-<li>不建议在请  求中再开 <code>goroutine</code> 来处理请求，这样或使得 <code>goruotine</code> 快速膨胀，当 <code>goroutine</code> 多了之后也会在 <code>Go</code> 引擎层面影响程序的整体调度。</li>
+<li>不建议在请  求中再开 <code>goroutine</code> 来处理请求，这样或使得 <code>goroutine</code> 快速膨胀，当 <code>goroutine</code> 多了之后也会在 <code>Go</code> 引擎层面影响程序的整体调度。</li>
 <li>如果实在有必要新开 <code>goroutine</code> 的场景下，可以考虑使用 <code>grpool.AddWithRecover</code> 来创建新的 <code>goroutine</code>，见名知意，它会自动捕获异常。更详细的介绍请参考： <a href="/gf/docs/组件列表/系统相关/协程管理-grpool">协程管理-grpool</a></li>
 </ul>
 <h3 class="anchor anchorWithStickyNavbar_LWe7" id="2-json-输出时屏蔽掉一些字段">2、 <code>json</code> 输出时屏蔽掉一些字段<a href="#2-json-输出时屏蔽掉一些字段" class="hash-link" aria-label="2-json-输出时屏蔽掉一些字段的直接链接" title="2-json-输出时屏蔽掉一些字段的直接链接">​</a></h3>
