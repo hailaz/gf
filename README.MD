@@ -42,3 +42,4 @@ A powerful framework for faster, easier, and more efficient project development.
 # License
 
 `GoFrame` is licensed under the [MIT License](LICENSE), 100% free and open-source, forever.
+
